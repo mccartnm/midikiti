@@ -46,7 +46,9 @@ void setup()
     pot = new mk::MidiPot(pot_config, command);
 
     // Skip i2c comms for now
-    controller = new mk::MidiController(-1);
+    mk::MidiController::Config con_config;
+    con_config.midi_channel = 1;
+    controller = new mk::MidiController(con_config);
     controller->add_local(command);
 }
 

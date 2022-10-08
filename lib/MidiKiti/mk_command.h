@@ -54,7 +54,7 @@ public:
     // Take any pooled events
     void take_events(lutil::Vec<RawEvent> &events);
 
-    void push_layout();
+    void push_layout(Stream *stream);
     void query_preferences(uint8_t index);
     void set_preferences(
         uint8_t index,

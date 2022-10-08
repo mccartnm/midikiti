@@ -6,6 +6,9 @@
 namespace mk
 {
 
+/**
+ * Slider to MIDI Controllers to go crazy with!
+ */
 class MidiPot : public _MidiInterface
 {
 public:

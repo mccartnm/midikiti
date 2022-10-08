@@ -53,10 +53,16 @@ void MidiButton::pressed()
     {
         _on = !_on;
         event.pressed = _on ? 1 : 0;
+
+        if (_ledPin >= 0)
+            digitalWrite(_ledPin, _on ? HIGH : LOW);
     }
     else
     {
         event.pressed = 1;
+
+        if (_ledPin >= 0)
+            digitalWrite(_ledPin, HIGH);
     }
     
     _command->queue_event(*rawevent_cast(&event));
@@ -72,6 +78,9 @@ void MidiButton::released()
     event.address = _command->address();
     event.control = _control;
     event.pressed = 0;
+
+    if (_ledPin >= 0)
+        digitalWrite(_ledPin, LOW);
 
     _command->queue_event(*rawevent_cast(&event));
 }

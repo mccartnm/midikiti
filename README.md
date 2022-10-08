@@ -71,7 +71,9 @@ void setup()
     b2_config.ledPin = A3;   // If we have an LED pin for this button
     button_1 = mk::MidiButton(b2_config, command);
     
-    controller = new mk::MidiController();
+    mk::MidiController::Config con_config;
+    con_config.midi_channel = 1;
+    controller = new mk::MidiController(con_config);
     controller->add_local(command);
 }
 

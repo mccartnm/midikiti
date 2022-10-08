@@ -90,13 +90,13 @@ bool MidiConnection::poll(Vec<RawEvent> &events)
     return size > 0;
 }
 
-MidiController::MidiController(int ready_out)
+MidiController::MidiController(const Config &config, int ready_out)
     : lutil::StateDriver<MidiController>()
     , _event(false)
     , _event_count(0)
     , _ready_out(ready_out)
     , _last_address(0)
-    , _midi_channel(1)
+    , _config(config)
 {
     // -- Transitions
     
@@ -132,7 +132,38 @@ bool MidiController::boot()
 bool MidiController::connected()
 {
     unsigned long time = millis();
-    return (_ready_out < 0) || (_last_connection + 500 < time);
+    if ((_ready_out < 0) || (_last_connection + 500 < time))
+    {
+        //
+        // We're ready to move into the runtime phase, but we
+        // want to check to see if we have existing preferences
+        //
+        // bool ok;
+        // Preferences prefs = Preferences::Read(_config.sdPin, &ok);
+        // if (!ok)
+        //     return true; // Just skip
+        //
+        // lutil::DataStream stream;
+        // uint32_t seed = 0;
+        // for (item : _local)
+        // {
+        //     item->push_layout(&stream);
+        //     while (stream->available())
+        //     {
+        //         uint8_t d = stream->read();
+        //         seed = mk::hash(&d, 1, seed);
+        //     }
+        // }
+        // if (seed == prefs.hash())
+        // {
+        //     // We can reuse!
+        //     prefs.
+        // }
+        //
+
+        return true;
+    }
+    return false;
 }
 
 void MidiController::discover()
@@ -274,7 +305,7 @@ void MidiController::process_command(Command &command)
         auto lit = _local.begin();
         for (; lit != _local.end(); lit++)
         {
-            (*lit)->push_layout();
+            (*lit)->push_layout(&Serial);
         }
 
         break;
@@ -370,11 +401,11 @@ void MidiController::_process_event(RawEvent &event)
 
         if (key->pressed)
         {
-            usbMIDI.sendNoteOn(realkey, key->velocity, _midi_channel);
+            usbMIDI.sendNoteOn(realkey, key->velocity, _config.midi_channel);
         }
         else
         {
-            usbMIDI.sendNoteOff(realkey, key->velocity, _midi_channel);
+            usbMIDI.sendNoteOff(realkey, key->velocity, _config.midi_channel);
         }
 
         break;
@@ -385,7 +416,7 @@ void MidiController::_process_event(RawEvent &event)
         usbMIDI.sendControlChange(
             pot->control,
             pot->value,
-            _midi_channel
+            _config.midi_channel
         );
     }
     }

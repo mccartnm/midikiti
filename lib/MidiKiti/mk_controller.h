@@ -31,7 +31,25 @@ private:
 class MidiController : public lutil::StateDriver<MidiController>
 {
 public:
-    MidiController(int ready_out = -1);
+    struct Config
+    {
+        // The midi channel we work on
+        int midi_channel;
+
+        // change this to match your SD shield or module;
+        // Arduino Ethernet shield: pin 4
+        // Adafruit SD shields and modules: pin 10
+        // Sparkfun SD shield: pin 8
+        // Teensy audio board: pin 10
+        // Teensy 3.5 & 3.6 & 4.1 on-board: BUILTIN_SDCARD
+        // Wiz820+SD board: pin 4
+        // Teensy 2.0: pin 0
+        // Teensy++ 2.0: pin 20
+        // -1 means no-SD card (and no saved settings)
+        int sdPin = -1;
+    };
+
+    MidiController(const Config &config, int ready_out = -1);
 
     // -- Transitions
 
@@ -71,13 +89,13 @@ private:
     lutil::Vec<MidiConnection*> _connections;
     lutil::Vec<uint8_t> _octaves;
 
-    uint8_t _midi_channel;
-
     // -- Local interfaces (non i2c)
     lutil::Vec<MidiCommander*> _local;
 
     Command *_receiving = nullptr;
     uint8_t _payload_index;
+
+    Config _config;
 };
 
 } // namespace mk

@@ -178,17 +178,17 @@ void MidiCommander::take_events(lutil::Vec<RawEvent> &events)
     events.swap(_pooled_events);
 }
 
-void MidiCommander::push_layout()
+void MidiCommander::push_layout(Stream *stream)
 {
     // The first byte is the number of interfaces
-    Serial.write(_interfaces.count());
+    stream->write(_interfaces.count());
 
     auto it = _interfaces.begin();
     for (; it != _interfaces.end(); it++)
     {
         // For each interface, we communicate the type
         // of object
-        Serial.write((*it)->interface_id());
+        stream->write((*it)->interface_id());
     }
 }
 

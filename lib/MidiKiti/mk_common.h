@@ -196,6 +196,24 @@ inline void Message(const char *message)
     Serial.write(message);
 }
 
+// Simple jenkins one-at-a-time hashing math.
+// https://en.wikipedia.org/wiki/Jenkins_hash_function
+inline uint32_t hash(const uint8_t* data, size_t length, uint32_t seed = 0)
+{
+    size_t i = 0;
+    while (i != length)
+    {
+        seed += data[i++];
+        seed += seed << 10;
+        seed ^= seed >> 6;
+    }
+
+    seed += seed << 3;
+    seed ^= seed >> 11;
+    seed += seed << 15;
+    return seed;
+}
+
 #pragma pack(pop)
 
 }
