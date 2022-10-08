@@ -31,7 +31,7 @@ private:
 class MidiController : public lutil::StateDriver<MidiController>
 {
 public:
-    MidiController(int ready_out);
+    MidiController(int ready_out = -1);
 
     // -- Transitions
 
