@@ -1,4 +1,4 @@
-# Command attributes
+import os
 import struct
 
 OCTAVE_ID = 0xF1
@@ -17,7 +17,7 @@ Message = 0x04
 
 TypeNames = {
     OCTAVE_ID: 'Octave',
-    POT_ID: 'Pot',
+    POT_ID: 'Slider',
     BUTTON_ID: 'Button'
 }
 
@@ -114,3 +114,16 @@ class PotParameters(_Struct):
 ParameterTypes = {
     POT_ID: PotParameters
 }
+
+IconPath = os.path.dirname(__file__) + '/icons'
+ParameterIcons = {
+    POT_ID: 'pot.svg',
+    OCTAVE_ID: 'keys.svg',
+    BUTTON_ID: 'button.svg'
+}
+
+def icon(type_id):
+    from PySide6 import QtGui
+    return QtGui.QIcon(
+        f'{IconPath}/{ParameterIcons[type_id]}'
+    )

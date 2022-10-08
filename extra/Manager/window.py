@@ -99,6 +99,7 @@ class MidiPreferencesWidget(QtWidgets.QWidget):
 
     def __init__(self, interface, win, parent=None):
         super().__init__(parent)
+        self._add_index = 0
         self._win = win
         self.setSizePolicy(
             QtWidgets.QSizePolicy.MinimumExpanding,
@@ -114,25 +115,36 @@ class MidiPreferencesWidget(QtWidgets.QWidget):
 
         layout = QtWidgets.QHBoxLayout()
 
+        self._icon = QtWidgets.QLabel()
+        self._icon.setPixmap(mk.icon(interface.type).pixmap(128, 128))
+
         self._label = QtWidgets.QLabel(
-            f'{mk.TypeNames[interface.type]} | {interface.command.index} | {interface.index}'
+            f'{mk.TypeNames[interface.type]}\n{interface.command.index} | {interface.index}'
         )
 
         f = self._label.setStyleSheet("font-size: 18px;")
 
         self._label.setAlignment(Qt.AlignCenter)
 
-        layout.addStretch()
+        layout.addWidget(self._icon)
         layout.addWidget(self._label)
+        
         layout.addStretch()
 
         # Holds the preference value widgets
-        self._form = QtWidgets.QFormLayout()
-        self._form.setLabelAlignment(
-            Qt.AlignRight | Qt.AlignVCenter
-        )
+        self._forms = []
 
-        layout.addLayout(self._form)
+        def _make_form():
+            f = QtWidgets.QFormLayout()
+            f.setLabelAlignment(
+                Qt.AlignRight | Qt.AlignVCenter
+            )
+            self._forms.append(f)
+            layout.addLayout(f)
+
+        _make_form()
+        layout.addSpacing(10)
+        _make_form()
 
         buttons = QtWidgets.QVBoxLayout()
         buttons.addStretch()
@@ -190,10 +202,11 @@ class MidiPreferencesWidget(QtWidgets.QWidget):
                 )
                 self._widgets[name] = pref
 
-                self._form.addRow(
+                self._forms[self._add_index % 2].addRow(
                     parm_type.verbose or name.replace('_', ' ').title(),
                     pref
                 )
+                self._add_index += 1
 
             self._widgets[name].poll_value()
 
@@ -236,6 +249,7 @@ class ManagerWindow(QtWidgets.QMainWindow):
 
     def __init__(self):
         super().__init__()
+        self.setWindowIcon(mk.icon(mk.OCTAVE_ID))
         self.setWindowTitle("MidiKit Control Surface")
 
         # -- Variables
