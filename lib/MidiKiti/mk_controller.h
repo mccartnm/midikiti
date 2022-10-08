@@ -8,6 +8,8 @@
 
 namespace mk {
 
+class MidiCommander;
+
 class MidiConnection
 {
 public:
@@ -42,6 +44,13 @@ public:
     void discover();
     void runtime();
 
+    // --
+
+    void add_local(MidiCommander *command);
+
+    void scan_input();
+    void process_command(Command &command);
+
 private:
     void _process_event(RawEvent &event);
     int8_t _get_octave(uint8_t address);
@@ -56,13 +65,19 @@ private:
     uint16_t _event_count;
 
     uint16_t _ready_out;
-    size_t _last_connection;
+    ElapsedMicros _last_connection;
 
     uint8_t _last_address;
     lutil::Vec<MidiConnection*> _connections;
     lutil::Vec<uint8_t> _octaves;
 
     uint8_t _midi_channel;
+
+    // -- Local interfaces (non i2c)
+    lutil::Vec<MidiCommander*> _local;
+
+    Command *_receiving = nullptr;
+    uint8_t _payload_index;
 };
 
 } // namespace mk

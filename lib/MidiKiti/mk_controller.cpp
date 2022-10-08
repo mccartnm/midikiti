@@ -1,15 +1,15 @@
 #include "mk_controller.h"
+#include "mk_interface.h"
+#include "mk_command.h"
+
+#include <SoftwareSerial.h>
 
 #include <Wire.h>
-#include <MIDI.h>
 
-constexpr char Boot[] = "Boot";
-constexpr char Connect[] = "Connect";
-constexpr char Engage[] = "Engage";
-constexpr char Runtime[] = "Runtime";
+// #include <MIDI.h>
 
-// The controller listens on the extra hardware serial from our teensy
-MIDI_CREATE_INSTANCE(HardwareSerial, Serial2, s_midi)
+// The controller listen on the extra hardware serial from our teensy
+// MIDI_CREATE_INSTANCE(HardwareSerial, Serial2, s_midi)
 
 namespace mk {
 
@@ -18,7 +18,7 @@ using namespace lutil;
 void MidiConnection::send(uint8_t *bytes, uint8_t size)
 {
     Wire.beginTransmission(_address);
-    Wire.send(bytes, size);
+    Wire.write(bytes, size);
     Wire.endTransmission();
 }
 
@@ -59,21 +59,20 @@ bool MidiConnection::poll(Vec<RawEvent> &events)
                         uint8_t address = Wire.read();
 
                         event.type = type;
-                        event.payload |= address << 48;
+                        event.payload |= uint64_t(address) << 48;
 
-                        uint16_t consumeBits = 0;
                         switch (type)
                         {
                         case KEY_EVENT_ID:
                         {
                             // key
-                            event.payload |= Wire.read() << 40;
+                            event.payload |= uint64_t(Wire.read()) << 40;
 
                             // velocity
-                            event.payload |= Wire.read() << 32;
+                            event.payload |= uint64_t(Wire.read()) << 32;
 
                             // pressed
-                            event.payload |= Wire.read() << 24;
+                            event.payload |= uint64_t(Wire.read()) << 24;
                             break;
                         }
                         default:
@@ -120,20 +119,20 @@ bool MidiController::boot()
     // 3. Move the READY_RUN_OUTPUT to high to initialize
     //    the connection process.
     //
-
     Wire.begin();
 
     // We also hook up the MIDI interface here :D
-    s_midi.begin(_midi_channel);
+    // s_midi.begin();
 
-    digitalWrite(_ready_out, HIGH);
+    if (_ready_out >= 0)
+        digitalWrite(_ready_out, HIGH);
     return true;
 }
 
 bool MidiController::connected()
 {
-    size_t time = millis();
-    return _last_connection + 500 < time;
+    unsigned long time = millis();
+    return (_ready_out < 0) || (_last_connection + 500 < time);
 }
 
 void MidiController::discover()
@@ -141,7 +140,7 @@ void MidiController::discover()
     if (Wire.available() > 0)
     {
         // We have a new connection now!
-        _last_connection = millis();
+        _last_connection = ElapsedMicros();
 
         uint16_t uuid = Wire.read();
 
@@ -153,7 +152,7 @@ void MidiController::discover()
 
         delayMicroseconds(50);
         Wire.beginTransmission(0xFE);
-        Wire.write(++_last_address);
+        Wire.write(_last_address++);
         Wire.endTransmission();
 
         MidiConnection *conn = new MidiConnection(uuid, _last_address);
@@ -182,6 +181,176 @@ void MidiController::runtime()
         for (; eit != events.end(); eit++)
             _process_event(*eit);
     }
+
+    auto lit = _local.begin();
+    for (; lit != _local.end(); lit++)
+    {
+        MidiCommander *command = (*lit);
+
+        // Consume the events
+        lutil::Vec<RawEvent> events;
+        command->take_events(events);
+
+        auto eit = events.begin();
+        for (; eit != events.end(); eit++)
+        {
+            _process_event(*eit);
+        }
+    }
+
+    while(usbMIDI.read()){}
+
+    // We'll also check for input commands from the
+    // Serial lines. This way, we can have a computer
+    // manage the preference settings, among other
+    // future activities
+    scan_input();
+}
+
+void MidiController::scan_input()
+{
+    while (Serial.available())
+    {
+        if (!_receiving)
+        {
+            uint8_t b = Serial.read();
+            if (b == Command_StartFlag)
+            {
+                // Pulled High - time to start
+                // reading a command.
+                _receiving = new Command();
+                _receiving->id = Command_StartFlag;
+                _receiving->size = Command_StartFlag;
+            }
+        }
+        else if (_receiving->id == Command_StartFlag)
+        {
+            _receiving->id = Serial.read();
+        }
+        else if (_receiving->size == Command_StartFlag)
+        {
+            _receiving->size = Serial.read();
+            _receiving->payload = lutil::managed_data(
+                _receiving->size
+            );
+        }
+        else
+        {
+            _receiving->payload[_payload_index++] = Serial.read();
+            if (_payload_index >= _receiving->size)
+            {
+                // We've got a command ready.
+                process_command(*_receiving);
+
+                delete _receiving;
+                _receiving = nullptr;
+                _payload_index = 0;
+            }
+        }
+    }
+}
+
+void MidiController::process_command(Command &command)
+{
+    switch(command.id)
+    {
+    case Command_GetLayout:
+    {
+        // First, we write the number of commanders:
+        uint8_t count = _connections.count();
+        count += _local.count();
+
+        Serial.write(Command_StartFlag);
+        Serial.write(Command_GetLayout);
+        Serial.write(count);
+
+        // TODO
+        // auto it = _connections.begin();
+        // for (; it != _connections.end(); it++)
+        // {
+        //     _push_layout(*it);
+        // }
+
+        auto lit = _local.begin();
+        for (; lit != _local.end(); lit++)
+        {
+            (*lit)->push_layout();
+        }
+
+        break;
+    }
+    case Command_GetPreferences:
+    {
+        PreferencesHeader *comm = reinterpret_cast<PreferencesHeader*>(
+            command.payload.get()
+        );
+
+        uint8_t idx = comm->commander;
+        if (idx >= _connections.count())
+        {
+            idx -= _connections.count();
+            MidiCommander *commander = _local[idx];
+
+            // Write to the Serial line
+            commander->query_preferences(comm->index);
+        }
+        else
+        {
+            // TODO: MidiConnection::push_preferences()
+        }
+
+        Message("Prefs Requested");
+
+        break;
+    }
+    case Command_SetPreferences:
+    {
+        uint8_t *data = command.payload.get();
+
+        PreferencesHeader *comm = reinterpret_cast<PreferencesHeader*>(
+            data
+        );
+
+        // Start of the actual Preferences bytes
+        data = data + sizeof(PreferencesHeader);
+
+        uint8_t idx = comm->commander;
+        if (idx >= _connections.count())
+        {
+            idx -= _connections.count();
+            MidiCommander *commander = _local[idx];
+
+            Message("Set Preference");
+            commander->set_preferences(
+                comm->index,
+                data[0],
+                data + 1
+            );
+
+        }
+        else
+        {
+            // TODO: MidiConnection::push_preferences()
+        }
+
+        break;
+    }
+    }
+}
+
+void MidiController::add_local(MidiCommander *command)
+{
+    _local.push(command);
+    command->set_address(_last_address++);
+
+    lutil::Vec<_AbstractMidiInterface*> &components = command->components();
+    auto it = components.begin();
+    for (; it != components.end(); it++)
+    {
+        _AbstractMidiInterface *component = (*it);
+        if (component->interface_id() == OCTAVE_ID)
+            _octaves.push(command->address());
+    }
 }
 
 void MidiController::_process_event(RawEvent &event)
@@ -195,14 +364,29 @@ void MidiController::_process_event(RawEvent &event)
         // Based on the index of the KeyEvents address in our
         // known octave instances, we adjust the key accordingly
         int8_t octave = _get_octave(key->address);
-        byte realkey = (int8_t(key->key) + 60) * octave; // 60 is the MIDI middle C
+
+        // 60 is the MIDI middle C, 12 keys to an octave
+        byte realkey = (int8_t(key->key) + 60) + (12 * octave);
 
         if (key->pressed)
-            s_midi.sendNoteOn(realkey, key->velocity, _midi_channel);
+        {
+            usbMIDI.sendNoteOn(realkey, key->velocity, _midi_channel);
+        }
         else
-            s_midi.sendNoteOff(realkey, key->velocity, _midi_channel);
+        {
+            usbMIDI.sendNoteOff(realkey, key->velocity, _midi_channel);
+        }
 
         break;
+    }
+    case POT_EVENT_ID:
+    {
+        PotEvent *pot = event_cast<PotEvent>(&event);
+        usbMIDI.sendControlChange(
+            pot->control,
+            pot->value,
+            _midi_channel
+        );
     }
     }
 }
@@ -210,6 +394,10 @@ void MidiController::_process_event(RawEvent &event)
 int8_t MidiController::_get_octave(uint8_t address)
 {
     int index = 0;
+
+    if (_octaves.count() == 1)
+        return 0;
+    
     auto it = _octaves.begin();
     for (; it != _octaves.end(); it++, index++)
     {
@@ -218,7 +406,7 @@ int8_t MidiController::_get_octave(uint8_t address)
     }
 
     if (it == _octaves.end())
-        return 0; // ??
+        return 0;
 
     return index - (_octaves.count() / 2);
 }

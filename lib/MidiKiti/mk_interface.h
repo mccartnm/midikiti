@@ -8,37 +8,44 @@
 #include "lu_state/state.h"
 #include "lu_storage/vector.h"
 
-constexpr char Off[] = "Off";
-constexpr char Boot[] = "Boot";
-constexpr char Connect[] = "Connect";
-constexpr char Wait[] = "Wait";
-constexpr char Runtime[] = "Runtime";
-
 namespace mk {
 
+class MidiCommander;
+
 /**
- * Required non-pure-virtual class for the state driver template.
+ * The abstract interface itself. The whole structure looks something
+ * like the following:
+ * 
+ * MidiController
+ *  `- [MidiCommander, ]  // local instances
+ *  `- [MidiConnection, ] // i2c instances
+ * 
+ * MidiCommander
+ *    `- _address == (i2c address || MidiController:local_index))
+ *    `- [_AbstractMidiInterface, ]
+ * 
+ * So, from the controller, we can ask for specific interface data
+ * through the commanders address and interface index.
+ * 
  */
-class _MidiDriver : public lutil::StateDriver<_MidiInterface>
+class _AbstractMidiInterface
 {
 public:
-    _MidiDriver()
-        : lutil::StateDriver<_MidiInterface>()
-    {}
+    virtual uint8_t interface_id() const = 0;
+    virtual Parameters *parameters(size_t &size) const = 0;
+    virtual void setParameters(Parameters *parameters, size_t size) = 0;
 };
 
 /**
  * Abstract interface for the devices in the midi deck
  */
-class _MidiInterface : public _MidiDriver
+class _MidiInterface
+    : public lutil::StateDriver<_MidiInterface>
+    , public _AbstractMidiInterface
 {
 public:
-    static void SetInterfaceInstance(_MidiInterface *instance);
-
-    explicit _MidiInterface(uint8_t id, int ready_in, int ready_out);
-
-    uint8_t address() const;
-    void events_requested();
+    explicit _MidiInterface(uint8_t id, MidiCommander *command);
+    uint8_t interface_id() const override;
 
     // -- Transitions
 
@@ -61,19 +68,20 @@ public:
 protected:
     void queue_event(const RawEvent &event);
 
+    template<typename T>
+    void queue_event(const T &event)
+    {
+        RawEvent *re = rawevent_cast<T>(const_cast<T*>(&event));
+        queue_event(*re);
+    }
+
+    // Protected access for ease of use
+    MidiCommander *_command = nullptr;
+
 private:
     void flush();
 
-    int _ready_in;
-    int _ready_out;
-    uint16_t _uuid;
-
-    // All events we're waiting to send to the controller
-    lutil::Vec<RawEvent> _pooled_events;
-    bool _requested;
-
-    bool _connected;
-    uint8_t _address;
+    int8_t _interface_id;
 };
 
 } // namespace mk

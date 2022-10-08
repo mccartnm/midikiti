@@ -104,5 +104,7 @@ class ShiftIn<3> : public _ShiftIn<3, uint32_t> {};
 template<>
 class ShiftIn<4> : public _ShiftIn<4, uint32_t> {};
 
+using KeyShift = mk::ShiftIn<1>;
+
 } // namespace mk
 
